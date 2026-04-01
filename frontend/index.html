@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Phishing URL Detector</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0d0d1a;
+      color: #e2e2e2;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 3rem 1.5rem;
+    }
+
+    /* ── Header ── */
+    .header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+    .header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #a78bfa;
+      letter-spacing: -0.5px;
+    }
+    .header p {
+      margin-top: 0.4rem;
+      font-size: 0.9rem;
+      color: #666;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: #13131f;
+      border: 1px solid #1f1f35;
+      border-radius: 16px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 660px;
+    }
+
+    /* ── Input row ── */
+    .input-row {
+      display: flex;
+      gap: 0.6rem;
+      margin-bottom: 1.25rem;
+    }
+    .input-row input {
+      flex: 1;
+      padding: 0.8rem 1rem;
+      border-radius: 10px;
+      border: 1px solid #2a2a45;
+      background: #0d0d1a;
+      color: #e2e2e2;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .input-row input:focus { border-color: #7c3aed; }
+    .input-row input::placeholder { color: #444; }
+
+    .btn-analyze {
+      padding: 0.8rem 1.4rem;
+      border-radius: 10px;
+      border: none;
+      background: #7c3aed;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .btn-analyze:hover  { background: #6d28d9; }
+    .btn-analyze:active { transform: scale(0.97); }
+    .btn-analyze:disabled { background: #333; cursor: not-allowed; }
+
+    /* ── Status messages ── */
+    .status-loading {
+      display: none;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      color: #888;
+      margin-bottom: 1rem;
+    }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid #444;
+      border-top-color: #a78bfa;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-box {
+      display: none;
+      background: #1f0a0a;
+      border: 1px solid #7f1d1d;
+      color: #fca5a5;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+
+    /* ── Result panel ── */
+    #result { display: none; }
+
+    .verdict-banner {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 1rem 1.25rem;
+      border-radius: 10px;
+      margin-bottom: 1rem;
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+    .verdict-icon {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+    .verdict-safe        { background: #052e16; border: 1px solid #166534; color: #4ade80; }
+    .verdict-suspicious  { background: #1c0a00; border: 1px solid #c2410c; color: #fb923c; }
+    .verdict-phishing    { background: #1a0000; border: 1px solid #991b1b; color: #f87171; }
+
+    .verdict-safe       .verdict-icon { background: #14532d; }
+    .verdict-suspicious .verdict-icon { background: #431407; }
+    .verdict-phishing   .verdict-icon { background: #450a0a; }
+
+    /* ── Score bar ── */
+    .score-section {
+      margin-bottom: 1.25rem;
+    }
+    .score-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: #666;
+      margin-bottom: 0.4rem;
+    }
+    .score-track {
+      background: #1a1a2e;
+      border-radius: 99px;
+      height: 8px;
+      overflow: hidden;
+    }
+    .score-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+      width: 0%;
+    }
+
+    /* ── Flags list ── */
+    .flags-header {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #555;
+      margin-bottom: 0.6rem;
+    }
+    .flag-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.75rem;
+      background: #0d0d1a;
+      border: 1px solid #1f1f35;
+      border-radius: 8px;
+      padding: 0.6rem 0.85rem;
+      margin-bottom: 0.4rem;
+      font-size: 0.875rem;
+    }
+    .flag-reason { color: #ccc; line-height: 1.4; }
+    .flag-weight {
+      background: #1f1f35;
+      color: #a78bfa;
+      padding: 0.15rem 0.5rem;
+      border-radius: 99px;
+      font-size: 0.75rem;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .safe-msg {
+      color: #4ade80;
+      font-size: 0.875rem;
+      text-align: center;
+      padding: 0.75rem;
+      opacity: 0.8;
+    }
+
+    /* ── Divider ── */
+    .divider {
+      border: none;
+      border-top: 1px solid #1f1f35;
+      margin: 1.5rem 0;
+    }
+
+    /* ── History ── */
+    .history-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+    .history-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #555;
+    }
+    .btn-clear {
+      font-size: 0.75rem;
+      color: #555;
+      background: none;
+      border: none;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .btn-clear:hover { color: #f87171; }
+
+    #history-list { list-style: none; }
+    .history-item {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #1a1a2e;
+      cursor: pointer;
+      transition: background 0.15s;
+      border-radius: 6px;
+      padding-left: 0.5rem;
+    }
+    .history-item:hover { background: #1a1a2e; }
+    .history-item:last-child { border-bottom: none; }
+
+    .history-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-safe       { background: #4ade80; }
+    .dot-suspicious { background: #fb923c; }
+    .dot-phishing   { background: #f87171; }
+
+    .history-url {
+      flex: 1;
+      font-size: 0.825rem;
+      color: #888;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .history-badge {
+      font-size: 0.7rem;
+      padding: 0.1rem 0.45rem;
+      border-radius: 99px;
+      flex-shrink: 0;
+    }
+    .badge-safe       { background: #052e16; color: #4ade80; }
+    .badge-suspicious { background: #1c0a00; color: #fb923c; }
+    .badge-phishing   { background: #1a0000; color: #f87171; }
+
+    .history-empty {
+      font-size: 0.825rem;
+      color: #444;
+      text-align: center;
+      padding: 0.75rem 0;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>&#128737; Phishing URL Detector</h1>
+    <p>Rule-based analysis </p>
+  </div>
+
+  <div class="card">
+
+    <!-- Input -->
+    <div class="input-row">
+      <input
+        type="text"
+        id="urlInput"
+        placeholder="https://example.com/login/verify"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button class="btn-analyze" id="analyzeBtn" onclick="analyzeURL()">
+        Analyze
+      </button>
+    </div>
+
+    <!-- Loading -->
+    <div class="status-loading" id="loadingMsg">
+      <div class="spinner"></div>
+      <span>Analyzing URL...</span>
+    </div>
+
+    <!-- Error -->
+    <div class="error-box" id="errorBox"></div>
+
+    <!-- Result -->
+    <div id="result">
+
+      <!-- Verdict banner -->
+      <div class="verdict-banner" id="verdictBanner">
+        <div class="verdict-icon" id="verdictIcon"></div>
+        <div>
+          <div id="verdictText"></div>
+          <div id="verdictUrl" style="font-size:0.75rem;font-weight:400;margin-top:2px;opacity:0.6;word-break:break-all;"></div>
+        </div>
+      </div>
+
+      <!-- Score bar -->
+      <div class="score-section">
+        <div class="score-label">
+          <span>Risk score</span>
+          <span id="scoreNum">0 / 100+</span>
+        </div>
+        <div class="score-track">
+          <div class="score-fill" id="scoreFill"></div>
+        </div>
+      </div>
+
+      <!-- Flags -->
+      <div id="flagsContainer"></div>
+
+    </div>
+
+    <!-- Divider + History (always visible) -->
+    <hr class="divider"/>
+    <div class="history-header">
+      <span class="history-title">Recent scans</span>
+      <button class="btn-clear" onclick="clearHistory()">Clear</button>
+    </div>
+    <ul id="history-list">
+      <li class="history-empty">No scans yet.</li>
+    </ul>
+
+  </div><!-- /.card -->
+
+  <script>
+    const API_BASE = 'http://localhost:5000';
+
+    // ── Enter key support ──────────────────────────────────────────
+    document.getElementById('urlInput')
+      .addEventListener('keydown', e => { if (e.key === 'Enter') analyzeURL(); });
+
+    // ── Main analyze function ──────────────────────────────────────
+    async function analyzeURL() {
+      const input = document.getElementById('urlInput');
+      const url   = input.value.trim();
+      if (!url) { input.focus(); return; }
+
+      setLoading(true);
+      hideError();
+      document.getElementById('result').style.display = 'none';
+
+      try {
+        const res = await fetch(`${API_BASE}/analyze`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ url }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `Server error ${res.status}`);
+        }
+
+        const data = await res.json();
+        renderResult(data);
+        addToHistory(data);
+
+      } catch (err) {
+        if (err.message.includes('fetch')) {
+          showError('Cannot reach the API. Is your Flask server running? → python api/app.py');
+        } else {
+          showError(err.message);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // ── Render result panel ────────────────────────────────────────
+    function renderResult(data) {
+      const { url, score, verdict, flags } = data;
+
+      // Verdict banner
+      const banner = document.getElementById('verdictBanner');
+      const icon   = document.getElementById('verdictIcon');
+      const text   = document.getElementById('verdictText');
+      const urlEl  = document.getElementById('verdictUrl');
+
+      banner.className = 'verdict-banner';
+
+      if (verdict === 'Safe') {
+        banner.classList.add('verdict-safe');
+        icon.textContent = '✓';
+        text.textContent = 'Safe — no threats detected';
+      } else if (verdict === 'Suspicious') {
+        banner.classList.add('verdict-suspicious');
+        icon.textContent = '!';
+        text.textContent = `Suspicious — proceed with caution`;
+      } else {
+        banner.classList.add('verdict-phishing');
+        icon.textContent = '✕';
+        text.textContent = 'Likely Phishing — do not visit';
+      }
+      urlEl.textContent = url;
+
+      // Score bar
+      const pct = Math.min((score / 120) * 100, 100);
+      const fill = document.getElementById('scoreFill');
+      document.getElementById('scoreNum').textContent = `${score} pts`;
+      // Reset width first so animation re-triggers
+      fill.style.width = '0%';
+      fill.style.background = score < 30  ? '#16a34a'
+                             : score < 60  ? '#ea580c'
+                                           : '#dc2626';
+      setTimeout(() => { fill.style.width = pct + '%'; }, 50);
+
+      // Flags
+      const container = document.getElementById('flagsContainer');
+      container.innerHTML = '';
+
+      if (flags.length === 0) {
+        container.innerHTML = '<p class="safe-msg">✓ Passed all detection rules</p>';
+      } else {
+        const header = document.createElement('p');
+        header.className = 'flags-header';
+        header.textContent = `${flags.length} issue${flags.length !== 1 ? 's' : ''} detected`;
+        container.appendChild(header);
+
+        flags.forEach(f => {
+          const item = document.createElement('div');
+          item.className = 'flag-item';
+          item.innerHTML = `
+            <span class="flag-reason">${escapeHtml(f.reason)}</span>
+            <span class="flag-weight">+${f.weight} pts</span>
+          `;
+          container.appendChild(item);
+        });
+      }
+
+      document.getElementById('result').style.display = 'block';
+    }
+
+    // ── History ───────────────────────────────────────────────────
+    let localHistory = [];
+
+    function addToHistory(data) {
+      // Remove duplicate if same URL was scanned before
+      localHistory = localHistory.filter(h => h.url !== data.url);
+      localHistory.unshift({ url: data.url, verdict: data.verdict, score: data.score });
+      if (localHistory.length > 10) localHistory.pop();
+      renderHistory();
+    }
+
+    function renderHistory() {
+      const list = document.getElementById('history-list');
+      list.innerHTML = '';
+
+      if (localHistory.length === 0) {
+        list.innerHTML = '<li class="history-empty">No scans yet.</li>';
+        return;
+      }
+
+      localHistory.forEach(item => {
+        const verdictKey = item.verdict === 'Safe'           ? 'safe'
+                         : item.verdict === 'Suspicious'     ? 'suspicious'
+                                                             : 'phishing';
+        const li = document.createElement('li');
+        li.className = 'history-item';
+        li.title     = item.url;
+        li.onclick   = () => {
+          document.getElementById('urlInput').value = item.url;
+          analyzeURL();
+        };
+        li.innerHTML = `
+          <div class="history-dot dot-${verdictKey}"></div>
+          <span class="history-url">${escapeHtml(item.url)}</span>
+          <span class="history-badge badge-${verdictKey}">${item.verdict}</span>
+        `;
+        list.appendChild(li);
+      });
+    }
+
+    function clearHistory() {
+      localHistory = [];
+      renderHistory();
+    }
+
+    // ── UI helpers ────────────────────────────────────────────────
+    function setLoading(on) {
+      document.getElementById('loadingMsg').style.display = on ? 'flex' : 'none';
+      document.getElementById('analyzeBtn').disabled = on;
+    }
+
+    function showError(msg) {
+      const box = document.getElementById('errorBox');
+      box.textContent = msg;
+      box.style.display = 'block';
+    }
+
+    function hideError() {
+      document.getElementById('errorBox').style.display = 'none';
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+  </script>
+</body>
+</html>
